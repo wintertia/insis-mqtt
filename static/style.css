@@ -1,0 +1,73 @@
+body {
+    font-family: sans-serif;
+    margin: 0;
+    background-color: #f4f7f6;
+    color: #333;
+    padding: 20px;
+}
+
+.container {
+    max-width: 800px;
+    margin: auto;
+    background-color: #fff;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+}
+
+h1 {
+    color: #2c5d3c;
+    text-align: center;
+    margin-bottom: 30px;
+}
+
+.card {
+    background-color: #e9f5e9;
+    border: 1px solid #c8e6c9;
+    border-radius: 5px;
+    padding: 15px;
+    margin-bottom: 20px;
+}
+
+.card h2 {
+    margin-top: 0;
+    color: #388e3c;
+    border-bottom: 1px solid #a5d6a7;
+    padding-bottom: 5px;
+}
+
+.data-value {
+    font-size: 1.8em;
+    font-weight: bold;
+    color: #1b5e20;
+    margin: 5px 0;
+}
+
+.timestamp {
+    font-size: 0.8em;
+    color: #555;
+    margin-top: 5px;
+}
+
+#alerts-list {
+    list-style-type: none;
+    padding-left: 0;
+}
+
+#alerts-list li {
+    background-color: #fff3e0;
+    border-left: 4px solid #ff9800;
+    padding: 8px;
+    margin-bottom: 5px;
+    font-size: 0.9em;
+}
+
+#alerts-list li.alert-message { /* More specific if needed */
+    border-left-color: #f44336; /* Red for critical alerts */
+    background-color: #ffebee;
+}
+
+
+.status-online { color: #388e3c !important; } /* Green */
+.status-offline { color: #d32f2f !important; } /* Red */
+.status-unknown { color: #757575 !important; } /* Grey */

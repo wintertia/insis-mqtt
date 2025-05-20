@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Plant Monitor</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>🌿 Smart Office Plant Monitor</h1>
+
+        <div class="card">
+            <h2>Soil Moisture</h2>
+            <p id="moisture-level" class="data-value">N/A %</p>
+            <p class="timestamp" id="moisture-timestamp">Last update: Never</p>
+        </div>
+
+        <div class="card">
+            <h2>Sensor Status</h2>
+            <p id="sensor-status" class="data-value">Unknown</p>
+            <p class="timestamp" id="status-timestamp">Last update: Never</p>
+            <p id="sensor-id">Sensor ID: N/A</p>
+        </div>
+
+        <div class="card">
+            <h2>Alerts</h2>
+            <ul id="alerts-list">
+                <li>No alerts yet.</li>
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        function updateTimestamp(elementId) {
+            const now = new Date();
+            document.getElementById(elementId).textContent = 'Last update: ' + now.toLocaleTimeString();
+        }
+
+        const moistureElement = document.getElementById('moisture-level');
+        const statusElement = document.getElementById('sensor-status');
+        const sensorIdElement = document.getElementById('sensor-id');
+        const alertsList = document.getElementById('alerts-list');
+        const MAX_ALERTS_DISPLAY = 5; // Match deque in backend for consistency
+
+        // Initialize with server-rendered values (optional, SSE will update)
+        // moistureElement.textContent = "{{ initial_moisture }} %";
+        // statusElement.textContent = "{{ initial_status.status }}";
+        // if ("{{ initial_status.sensor_id }}") {
+        //    sensorIdElement.textContent = "Sensor ID: {{ initial_status.sensor_id }}";
+        // }
+        // const initialAlerts = {{ initial_alerts | tojson }};
+        // if (initialAlerts.length > 0) {
+        //     alertsList.innerHTML = ''; // Clear "No alerts yet"
+        //     initialAlerts.forEach(alertData => addAlertToList(alertData));
+        // }
+
+
+        const eventSource = new EventSource("/events");
+
+        eventSource.onopen = function() {
+            console.log("SSE connection established.");
+        };
+
+        eventSource.onmessage = function(event) {
+            console.log("SSE Data:", event.data);
+            const data = JSON.parse(event.data);
+
+            if (data.type === "moisture") {
+                moistureElement.textContent = data.value + " %";
+                updateTimestamp('moisture-timestamp');
+            } else if (data.type === "status") {
+                statusElement.textContent = data.data.status || "Unknown";
+                statusElement.className = 'data-value ' + (data.data.status === 'online' ? 'status-online' : (data.data.status && data.data.status.includes('offline') ? 'status-offline' : 'status-unknown'));
+                sensorIdElement.textContent = "Sensor ID: " + (data.data.sensor_id || "N/A");
+                updateTimestamp('status-timestamp');
+            } else if (data.type === "alert") {
+                addAlertToList(data.data);
+            }
+        };
+
+        eventSource.onerror = function(err) {
+            console.error("EventSource failed:", err);
+            // You might want to try to reconnect or inform the user
+            statusElement.textContent = "Connection Error";
+            statusElement.className = 'data-value status-offline';
+        };
+
+        function addAlertToList(alertData) {
+            if (alertsList.children.length === 1 && alertsList.firstElementChild.textContent === "No alerts yet.") {
+                alertsList.innerHTML = ''; // Clear "No alerts yet"
+            }
+
+            const listItem = document.createElement('li');
+            let alertText = `[${new Date(alertData.timestamp ? alertData.timestamp * 1000 : Date.now()).toLocaleTimeString()}] `;
+            if (alertData.message) {
+                alertText += `${alertData.message}`;
+            } else {
+                alertText += JSON.stringify(alertData); // Fallback for unknown structure
+            }
+            listItem.textContent = alertText;
+            listItem.className = 'alert-message';
+
+            alertsList.insertBefore(listItem, alertsList.firstChild); // Add to top
+
+            // Limit number of displayed alerts
+            while (alertsList.children.length > MAX_ALERTS_DISPLAY) {
+                alertsList.removeChild(alertsList.lastChild);
+            }
+        }
+    </script>
+</body>
+</html>
