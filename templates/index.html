@@ -1,113 +1,227 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Smart Plant Monitor</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-</head>
-<body>
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='style.css') }}"
+    />
+  </head>
+  <body>
     <div class="container">
-        <h1>🌿 Smart Office Plant Monitor</h1>
+      <h1>🌿 Smart Office Plant Monitor</h1>
 
-        <div class="card">
-            <h2>Soil Moisture</h2>
-            <p id="moisture-level" class="data-value">N/A %</p>
-            <p class="timestamp" id="moisture-timestamp">Last update: Never</p>
-        </div>
+      <div class="card">
+        <h2>Soil Moisture</h2>
+        <p id="moisture-level" class="data-value">N/A %</p>
+        <p class="timestamp" id="moisture-timestamp">Last update: Never</p>
+      </div>
 
-        <div class="card">
-            <h2>Sensor Status</h2>
-            <p id="sensor-status" class="data-value">Unknown</p>
-            <p class="timestamp" id="status-timestamp">Last update: Never</p>
-            <p id="sensor-id">Sensor ID: N/A</p>
-        </div>
+      <div class="card">
+        <h2>Sensor Status</h2>
+        <p id="sensor-status" class="data-value">Unknown</p>
+        <p class="timestamp" id="status-timestamp">Last update: Never</p>
+        <p id="sensor-id">Sensor ID: N/A</p>
+      </div>
 
-        <div class="card">
-            <h2>Alerts</h2>
-            <ul id="alerts-list">
-                <li>No alerts yet.</li>
-            </ul>
-        </div>
+      <div class="card">
+        <h2>Alerts</h2>
+        <ul id="alerts-list">
+          <li>No alerts yet.</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <h2>Connectivity</h2>
+        <p>Last Ping Sent: <span id="last-ping-sent">N/A</span></p>
+        <p>Last Pong Received: <span id="last-pong-received">N/A</span></p>
+        <p>
+          Sensor Latency:
+          <span id="sensor-latency" class="data-value">N/A ms</span>
+        </p>
+        <button id="ping-button">Ping Sensor</button>
+      </div>
+
+      <div class="card">
+        <h2>Sensor Details</h2>
+        <p id="sensor-details-content">Requesting details...</p>
+        <p class="timestamp" id="sensor-details-timestamp">
+          Last update: Never
+        </p>
+        <button id="request-details-button">Refresh Details</button>
+      </div>
     </div>
 
     <script>
-        function updateTimestamp(elementId) {
-            const now = new Date();
-            document.getElementById(elementId).textContent = 'Last update: ' + now.toLocaleTimeString();
+      function updateTimestamp(elementId) {
+        const now = new Date();
+        document.getElementById(elementId).textContent =
+          "Last update: " + now.toLocaleTimeString();
+      }
+
+      const moistureElement = document.getElementById("moisture-level");
+      const statusElement = document.getElementById("sensor-status");
+      const sensorIdElement = document.getElementById("sensor-id");
+      const alertsList = document.getElementById("alerts-list");
+      const MAX_ALERTS_DISPLAY = 5; // Match deque in backend for consistency
+
+      // New elements for Ping/Pong and Sensor Details
+      const lastPingSentElement = document.getElementById("last-ping-sent");
+      const lastPongReceivedElement =
+        document.getElementById("last-pong-received");
+      const sensorLatencyElement = document.getElementById("sensor-latency");
+      const pingButton = document.getElementById("ping-button");
+
+      const sensorDetailsContentElement = document.getElementById(
+        "sensor-details-content"
+      );
+      const sensorDetailsTimestampElement = document.getElementById(
+        "sensor-details-timestamp"
+      );
+      const requestDetailsButton = document.getElementById(
+        "request-details-button"
+      );
+
+      // Initialize with server-rendered values (optional, SSE will update)
+      // moistureElement.textContent = "{{ initial_moisture }} %";
+      // statusElement.textContent = "{{ initial_app_status.status }}"; // Use initial_app_status
+      // if ("{{ initial_app_status.sensor_id }}") { // Use initial_app_status
+      //    sensorIdElement.textContent = "Sensor ID: {{ initial_app_status.sensor_id }}"; // Use initial_app_status
+      // }
+      // const initialAlerts = {{ initial_alerts | tojson }};
+      // if (initialAlerts.length > 0) {
+      //     alertsList.innerHTML = ''; // Clear "No alerts yet"
+      //     initialAlerts.forEach(alertData => addAlertToList(alertData));
+      // }
+
+      const eventSource = new EventSource("/events");
+
+      eventSource.onopen = function () {
+        console.log("SSE connection established.");
+      };
+
+      eventSource.onmessage = function (event) {
+        console.log("SSE Data:", event.data);
+        const data = JSON.parse(event.data);
+
+        if (data.type === "moisture") {
+          moistureElement.textContent = data.value + " %";
+          updateTimestamp("moisture-timestamp");
+        } else if (data.type === "app_status") {
+          // Listen for app_status type
+          statusElement.textContent = data.data.status || "Unknown";
+          statusElement.className =
+            "data-value " +
+            (data.data.status === "online"
+              ? "status-online"
+              : data.data.status && data.data.status.includes("offline")
+              ? "status-offline"
+              : "status-unknown");
+          sensorIdElement.textContent =
+            "Sensor ID: " + (data.data.sensor_id || "N/A");
+          updateTimestamp("status-timestamp");
+        } else if (data.type === "generic_status") {
+          // Handle generic status updates if needed, e.g., log to console or display in a new UI element
+          console.log("Generic status update:", data.data);
+        } else if (data.type === "alert") {
+          addAlertToList(data.data);
+        } else if (data.type === "ping_sent") {
+          lastPingSentElement.textContent = new Date(
+            data.timestamp * 1000
+          ).toLocaleTimeString();
+          sensorLatencyElement.textContent = "Waiting for pong...";
+        } else if (data.type === "pong") {
+          updatePingDisplay(data.stats);
+        } else if (data.type === "command_sent") {
+          sensorDetailsContentElement.textContent = `Command '${data.command}' sent (ID: ${data.correlation_id}). Waiting for response...`;
+        } else if (data.type === "command_response") {
+          let content = `Response for CID ${data.correlation_id || "N/A"}:
+`;
+          content += JSON.stringify(data.data, null, 2);
+          if (data.latency_ms) {
+            content += `\nLatency: ${data.latency_ms.toFixed(2)} ms`;
+          }
+          sensorDetailsContentElement.textContent = content;
+          updateTimestamp("sensor-details-timestamp");
+        }
+      };
+
+      eventSource.onerror = function (err) {
+        console.error("EventSource failed:", err);
+        statusElement.textContent = "Connection Error";
+        statusElement.className = "data-value status-offline";
+        sensorLatencyElement.textContent = "Error";
+        sensorDetailsContentElement.textContent = "SSE Connection Error.";
+      };
+
+      function updatePingDisplay(stats) {
+        if (stats.last_ping_sent) {
+          lastPingSentElement.textContent = new Date(
+            stats.last_ping_sent * 1000
+          ).toLocaleTimeString();
+        }
+        if (stats.last_pong_received) {
+          lastPongReceivedElement.textContent = new Date(
+            stats.last_pong_received * 1000
+          ).toLocaleTimeString();
+        }
+        if (stats.latency_ms !== null && stats.latency_ms !== undefined) {
+          sensorLatencyElement.textContent = stats.latency_ms + " ms";
+        } else if (stats.last_ping_sent && !stats.last_pong_received) {
+          sensorLatencyElement.textContent = "Pong pending...";
+        } else {
+          sensorLatencyElement.textContent = "N/A ms";
+        }
+      }
+
+      // Event listeners for buttons
+      pingButton.addEventListener("click", () => {
+        fetch("/trigger_ping", { method: "POST" })
+          .then((response) => response.json())
+          .then((data) => console.log("Ping triggered:", data))
+          .catch((error) => console.error("Error triggering ping:", error));
+      });
+
+      requestDetailsButton.addEventListener("click", () => {
+        fetch("/trigger_request_details", { method: "POST" })
+          .then((response) => response.json())
+          .then((data) =>
+            console.log("Sensor details request triggered:", data)
+          )
+          .catch((error) =>
+            console.error("Error triggering sensor details request:", error)
+          );
+      });
+
+      function addAlertToList(alertData) {
+        if (
+          alertsList.children.length === 1 &&
+          alertsList.firstElementChild.textContent === "No alerts yet."
+        ) {
+          alertsList.innerHTML = ""; // Clear "No alerts yet"
         }
 
-        const moistureElement = document.getElementById('moisture-level');
-        const statusElement = document.getElementById('sensor-status');
-        const sensorIdElement = document.getElementById('sensor-id');
-        const alertsList = document.getElementById('alerts-list');
-        const MAX_ALERTS_DISPLAY = 5; // Match deque in backend for consistency
-
-        // Initialize with server-rendered values (optional, SSE will update)
-        // moistureElement.textContent = "{{ initial_moisture }} %";
-        // statusElement.textContent = "{{ initial_status.status }}";
-        // if ("{{ initial_status.sensor_id }}") {
-        //    sensorIdElement.textContent = "Sensor ID: {{ initial_status.sensor_id }}";
-        // }
-        // const initialAlerts = {{ initial_alerts | tojson }};
-        // if (initialAlerts.length > 0) {
-        //     alertsList.innerHTML = ''; // Clear "No alerts yet"
-        //     initialAlerts.forEach(alertData => addAlertToList(alertData));
-        // }
-
-
-        const eventSource = new EventSource("/events");
-
-        eventSource.onopen = function() {
-            console.log("SSE connection established.");
-        };
-
-        eventSource.onmessage = function(event) {
-            console.log("SSE Data:", event.data);
-            const data = JSON.parse(event.data);
-
-            if (data.type === "moisture") {
-                moistureElement.textContent = data.value + " %";
-                updateTimestamp('moisture-timestamp');
-            } else if (data.type === "status") {
-                statusElement.textContent = data.data.status || "Unknown";
-                statusElement.className = 'data-value ' + (data.data.status === 'online' ? 'status-online' : (data.data.status && data.data.status.includes('offline') ? 'status-offline' : 'status-unknown'));
-                sensorIdElement.textContent = "Sensor ID: " + (data.data.sensor_id || "N/A");
-                updateTimestamp('status-timestamp');
-            } else if (data.type === "alert") {
-                addAlertToList(data.data);
-            }
-        };
-
-        eventSource.onerror = function(err) {
-            console.error("EventSource failed:", err);
-            // You might want to try to reconnect or inform the user
-            statusElement.textContent = "Connection Error";
-            statusElement.className = 'data-value status-offline';
-        };
-
-        function addAlertToList(alertData) {
-            if (alertsList.children.length === 1 && alertsList.firstElementChild.textContent === "No alerts yet.") {
-                alertsList.innerHTML = ''; // Clear "No alerts yet"
-            }
-
-            const listItem = document.createElement('li');
-            let alertText = `[${new Date(alertData.timestamp ? alertData.timestamp * 1000 : Date.now()).toLocaleTimeString()}] `;
-            if (alertData.message) {
-                alertText += `${alertData.message}`;
-            } else {
-                alertText += JSON.stringify(alertData); // Fallback for unknown structure
-            }
-            listItem.textContent = alertText;
-            listItem.className = 'alert-message';
-
-            alertsList.insertBefore(listItem, alertsList.firstChild); // Add to top
-
-            // Limit number of displayed alerts
-            while (alertsList.children.length > MAX_ALERTS_DISPLAY) {
-                alertsList.removeChild(alertsList.lastChild);
-            }
+        const listItem = document.createElement("li");
+        let alertText = `[${new Date(
+          alertData.timestamp ? alertData.timestamp * 1000 : Date.now()
+        ).toLocaleTimeString()}] `;
+        if (alertData.message) {
+          alertText += `${alertData.message}`;
+        } else {
+          alertText += JSON.stringify(alertData); // Fallback for unknown structure
         }
+        listItem.textContent = alertText;
+        listItem.className = "alert-message";
+
+        alertsList.insertBefore(listItem, alertsList.firstChild); // Add to top
+
+        // Limit number of displayed alerts
+        while (alertsList.children.length > MAX_ALERTS_DISPLAY) {
+          alertsList.removeChild(alertsList.lastChild);
+        }
+      }
     </script>
-</body>
+  </body>
 </html>
