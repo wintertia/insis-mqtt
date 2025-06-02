@@ -77,3 +77,31 @@ h1 {
 .status-unknown {
   color: #757575 !important;
 } /* Grey */
+
+/* Tambahan di style.css jika belum ada */
+.details-list {
+    list-style-type: none;
+    padding-left: 0;
+    margin-top: 0; /* Hapus margin atas default dari ul */
+}
+
+.details-list li {
+    margin-bottom: 6px; /* Sedikit spasi antar item */
+    font-size: 0.95em;
+    line-height: 1.4;
+}
+
+.details-list li strong {
+    display: inline-block;
+    width: 140px; /* Sesuaikan lebar label jika perlu */
+    color: #333;
+    font-weight: 600; /* Sedikit lebih tebal */
+}
+
+.debug-info {
+    margin-top: 15px;
+    padding-top: 10px;
+    border-top: 1px dashed #ccc;
+    font-size: 0.8em;
+    color: #777;
+}

@@ -4,7 +4,7 @@ import json
 import ssl
 import threading
 import paho.mqtt.client as mqtt
-from flask import Flask, render_template, Response, stream_with_context
+from flask import Flask, render_template, Response, stream_with_context, jsonify
 from queue import Queue
 from collections import deque
 from dotenv import load_dotenv
@@ -57,6 +57,8 @@ ping_pong_stats = {"last_ping_sent": None,
 
 # For tracking request/response
 active_requests = {}  # Store correlation_id: timestamp
+
+mqtt_client_global = None
 
 # --- MQTT Client Functions ---
 
@@ -211,39 +213,38 @@ def request_sensor_details(client):
 
 
 def mqtt_thread_worker():
+    global mqtt_client_global
     # Use MQTTv5
-    mqtt_client = mqtt.Client(
+    # inisialisasi client dan assign ke variabel global
+    mqtt_client_global = mqtt.Client(
         client_id=CLIENT_ID_SUB_WEB, protocol=mqtt.MQTTv5)
-    mqtt_client.username_pw_set(USERNAME, PASSWORD)
-    mqtt_client.tls_set_context(ssl.create_default_context())
-    mqtt_client.on_connect = on_connect
-    mqtt_client.on_message = on_message
+    mqtt_client_global.username_pw_set(USERNAME, PASSWORD)
+    mqtt_client_global.tls_set_context(ssl.create_default_context())
+    mqtt_client_global.on_connect = on_connect
+    mqtt_client_global.on_message = on_message
 
     while True:  # Keep trying to connect
         try:
             print("MQTT: Attempting to connect to broker...")
-            mqtt_client.connect(BROKER_HOST, BROKER_PORT, 60)
+            mqtt_client_global.connect(BROKER_HOST, BROKER_PORT, 60)
 
             # Start a periodic ping after connection
             # And an initial request for sensor details
             def periodic_tasks():
-                if mqtt_client.is_connected():
-                    send_ping_to_sensor(mqtt_client)
+                if mqtt_client_global and mqtt_client_global.is_connected():
+                    send_ping_to_sensor(mqtt_client_global)
                     # Optionally, request details periodically or on demand
-                    # request_sensor_details(mqtt_client)
+                    # request_sensor_details(mqtt_client_global)
                 # Ping every 30 seconds
                 threading.Timer(30, periodic_tasks).start()
 
             # Send initial ping and request details once connected
             # Delay slightly to ensure subscriptions are processed by broker
-            threading.Timer(
-                2, lambda: send_ping_to_sensor(mqtt_client)).start()
-            threading.Timer(
-                3, lambda: request_sensor_details(mqtt_client)).start()
+            threading.Timer(2, lambda: send_ping_to_sensor(mqtt_client_global) if mqtt_client_global else None).start()
             # Start periodic pings
             # threading.Timer(30, periodic_tasks).start() # Start after initial tasks
 
-            mqtt_client.loop_forever()  # Blocks until disconnect
+            mqtt_client_global.loop_forever()  # Blocks until disconnect
         except ConnectionRefusedError:
             print("MQTT: Connection refused. Retrying in 10 seconds...")
         except Exception as e:
@@ -298,6 +299,48 @@ def events():
     # Using stream_with_context to ensure the request context is available if needed
     return Response(stream_with_context(generate_sse_events()), mimetype='text/event-stream')
 
+@app.route('/trigger_ping', methods=['POST'])
+def trigger_manual_ping():
+    global mqtt_client_global
+    if mqtt_client_global and mqtt_client_global.is_connected():
+        try:
+            send_ping_to_sensor(mqtt_client_global)
+            return jsonify({
+                "status": "success",
+                "message": "Ping manually triggered and sent to sendor."
+            }), 200
+        except Exception as e:
+            print(f"Error manualli triggered ping: {e}")
+            return jsonify({
+                "status": "error",
+                "message": f"Failed to trigger ping: {str(e)}"
+            }), 500
+        return jsonify({
+            "status": "error",
+            "message": "MQTT client not connected. Cannot send ping."
+        }), 503
+
+@app.route('/trigger_request_details', methods=['POST'])
+def trigger_manual_request_details():
+    global mqtt_client_global
+    if mqtt_client_global and mqtt_client_global.is_connected():
+        try:
+            request_sensor_details(mqtt_client_global)
+            return jsonify({
+                "status": "success",
+                "message": "Sensor details request manually triggered and sent."
+            }), 200
+        except Exception as e:
+            print(f"Error manualli triggering sensor details request: {e}")
+            return jsonify({
+                "status": "error",
+                "message": f"Failed to trigger sensor details request: {str(e)}"
+            }), 500
+    else:
+        return jsonify({
+            "status": "error",
+            "message": "MQTT client not connected. Cannot send request."
+        }), 503
 
 if __name__ == '__main__':
     # Start MQTT client in a separate thread

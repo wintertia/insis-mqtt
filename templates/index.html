@@ -46,11 +46,18 @@
 
       <div class="card">
         <h2>Sensor Details</h2>
-        <p id="sensor-details-content">Requesting details...</p>
-        <p class="timestamp" id="sensor-details-timestamp">
-          Last update: Never
-        </p>
+        <ul id="sensor-details-list" class="details-list">
+            <li><strong>Sensor ID:</strong> <span id="detail-sensor-id">N/A</span></li>
+            <li><strong>Firmware Version:</strong> <span id="detail-firmware">N/A</span></li>
+            <li><strong>Last Calibration:</strong> <span id="detail-calibration">N/A</span></li>
+            <li><strong>Response Status:</strong> <span id="detail-status">N/A</span></li>
+            <li><strong>Latency:</strong> <span id="detail-latency">N/A</span></li>
+        </ul>
+        <p class="timestamp">Data received at: <span id="sensor-details-timestamp">Never</span></p>
         <button id="request-details-button">Refresh Details</button>
+         <p class="debug-info" style="font-size: 0.8em; color: #666; margin-top: 10px;">
+            Correlation ID: <span id="detail-cid">N/A</span>
+        </p>
       </div>
     </div>
 
@@ -84,6 +91,13 @@
         "request-details-button"
       );
 
+      const detailSensorIdElement = document.getElementById("detail-sensor-id");
+      const detailFirmwareElement = document.getElementById("detail-firmware");
+      const detailCalibrationElement = document.getElementById("detail-calibration");
+      const detailStatusElement = document.getElementById("detail-status");
+      const detailLatencyElement = document.getElementById("detail-latency");
+      const detailCidElement = document.getElementById("detail-cid");
+      
       // Initialize with server-rendered values (optional, SSE will update)
       // moistureElement.textContent = "{{ initial_moisture }} %";
       // statusElement.textContent = "{{ initial_app_status.status }}"; // Use initial_app_status
@@ -135,16 +149,47 @@
         } else if (data.type === "pong") {
           updatePingDisplay(data.stats);
         } else if (data.type === "command_sent") {
-          sensorDetailsContentElement.textContent = `Command '${data.command}' sent (ID: ${data.correlation_id}). Waiting for response...`;
+          // Update UI untuk menunjukkan command telah dikirim, dan tunggu respons
+          // Kosongkan detail sebelumnya atau tampilkan pesan "Loading..."
+          detailSensorIdElement.textContent = "Loading...";
+          detailFirmwareElement.textContent = "Loading...";
+          detailCalibrationElement.textContent = "Loading...";
+          detailStatusElement.textContent = "Loading...";
+          detailLatencyElement.textContent = "Loading...";
+          detailCidElement.textContent = data.correlation_id || "N/A"; // Tampilkan CID segera
+          console.log(`Command '${data.command}' sent (ID: ${data.correlation_id}). Waiting for response...`);
         } else if (data.type === "command_response") {
-          let content = `Response for CID ${data.correlation_id || "N/A"}:
-`;
-          content += JSON.stringify(data.data, null, 2);
-          if (data.latency_ms) {
-            content += `\nLatency: ${data.latency_ms.toFixed(2)} ms`;
+          console.log("Received command response:", data);
+          const responsePayload = data.data; // Ini adalah objek JSON dari sensor
+          const cid = data.correlation_id || "N/A";
+          const latency = data.latency_ms !== undefined ? `${data.latency_ms.toFixed(2)} ms` : "N/A";
+
+          detailSensorIdElement.textContent = responsePayload.sensor_id || "N/A";
+          detailFirmwareElement.textContent = responsePayload.firmware_version || "N/A";
+          
+          if (responsePayload.last_calibration) {
+              const calDate = new Date(responsePayload.last_calibration * 1000);
+              detailCalibrationElement.textContent = calDate.toLocaleString(); // Format tanggal dan waktu lokal
+          } else {
+              detailCalibrationElement.textContent = "N/A";
           }
-          sensorDetailsContentElement.textContent = content;
-          updateTimestamp("sensor-details-timestamp");
+
+          detailStatusElement.textContent = responsePayload.status || "N/A";
+          if (responsePayload.status === "success") {
+              detailStatusElement.style.color = "green";
+          } else if (responsePayload.status === "error") {
+              detailStatusElement.style.color = "red";
+          } else {
+              detailStatusElement.style.color = ""; // Reset warna
+          }
+
+          detailLatencyElement.textContent = latency;
+          detailCidElement.textContent = cid; // Update CID jika ada perubahan (seharusnya tidak)
+          
+          // Update timestamp untuk kapan data ini diterima dan diproses oleh UI
+          // Anda sudah punya 'sensor-details-timestamp'
+          const now = new Date();
+          document.getElementById("sensor-details-timestamp").textContent = now.toLocaleTimeString();
         }
       };
 
